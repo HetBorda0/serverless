@@ -1,0 +1,117 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Serverless OTP Verification System
+Globals:
+  Function:
+    Timeout: 30
+    Runtime: nodejs18.x
+    Environment:
+      Variables:
+        OTP_TABLE_NAME:
+          Ref: OTPTable
+Resources:
+  OTPTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: otp-verification-table
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+      - AttributeName: email
+        AttributeType: S
+      - AttributeName: phoneNumber
+        AttributeType: S
+      KeySchema:
+      - AttributeName: email
+        KeyType: HASH
+      GlobalSecondaryIndexes:
+      - IndexName: PhoneNumberIndex
+        KeySchema:
+        - AttributeName: phoneNumber
+          KeyType: HASH
+        Projection:
+          ProjectionType: ALL
+      TimeToLiveSpecification:
+        AttributeName: expirationTime
+        Enabled: true
+  ApiGatewayApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: prod
+      Cors:
+        AllowMethods: '''POST, OPTIONS'''
+        AllowHeaders: '''Content-Type'''
+        AllowOrigin: '''*'''
+  GenerateOTPFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: GenerateOTPFunction
+      Handler: generate-otp.handler
+      FunctionName: generate-otp-function
+      Policies:
+      - DynamoDBCrudPolicy:
+          TableName:
+            Ref: OTPTable
+      Events:
+        GenerateOTP:
+          Type: Api
+          Properties:
+            RestApiId:
+              Ref: ApiGatewayApi
+            Path: /generate-otp
+            Method: post
+    Metadata:
+      SamResourceId: GenerateOTPFunction
+  VerifyOTPFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: VerifyOTPFunction
+      Handler: verify-otp.handler
+      FunctionName: verify-otp-function
+      Policies:
+      - DynamoDBCrudPolicy:
+          TableName:
+            Ref: OTPTable
+      Events:
+        VerifyOTP:
+          Type: Api
+          Properties:
+            RestApiId:
+              Ref: ApiGatewayApi
+            Path: /verify-otp
+            Method: post
+    Metadata:
+      SamResourceId: VerifyOTPFunction
+  CleanupExpiredOTPFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: CleanupExpiredOTPFunction
+      Handler: cleanup-expired-otp.handler
+      FunctionName: cleanup-expired-otp-function
+      Policies:
+      - DynamoDBCrudPolicy:
+          TableName:
+            Ref: OTPTable
+      Events:
+        CleanupSchedule:
+          Type: Schedule
+          Properties:
+            Schedule: rate(1 hour)
+            Name: cleanup-expired-otp-schedule
+            Description: Clean up expired OTP records every hour
+    Metadata:
+      SamResourceId: CleanupExpiredOTPFunction
+Outputs:
+  ApiGatewayUrl:
+    Description: API Gateway endpoint URL
+    Value:
+      Fn::Sub: https://${ApiGatewayApi}.execute-api.${AWS::Region}.amazonaws.com/prod/
+    Export:
+      Name:
+        Fn::Sub: ${AWS::StackName}-ApiGatewayUrl
+  DynamoDBTableName:
+    Description: DynamoDB table name
+    Value:
+      Ref: OTPTable
+    Export:
+      Name:
+        Fn::Sub: ${AWS::StackName}-TableName

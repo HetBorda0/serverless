@@ -1,0 +1,14 @@
+version = 0.1
+
+[default]
+[default.deploy]
+[default.deploy.parameters]
+stack_name = "otp-verification-stack"
+s3_prefix = "otp-verification-stack"
+region = "us-east-1"
+confirm_changeset = true
+capabilities = "CAPABILITY_IAM"
+parameter_overrides = "Environment=\"prod\""
+image_repositories = [] 
+resolve_s3 = true
+disable_rollback = true
